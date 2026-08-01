@@ -8,6 +8,7 @@
  */
 
 import * as fs from "node:fs";
+import * as path from "node:path";
 import type { AgentToolResult } from "@earendil-works/pi-agent-core";
 import { type ExtensionAPI, type ExtensionContext, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { Text, type Component } from "@earendil-works/pi-tui";
@@ -28,7 +29,6 @@ import { buildWidgetLines, createWidgetComponent, renderTodoResult } from "./ren
 
 const WIDGET_KEY = "todo";
 let widgetVisible = true;
-
 /** Update the live widget from the current store state */
 function refreshWidget(pi: ExtensionAPI, cwd: string): void {
 	const ctx = lastCtx;
@@ -45,6 +45,64 @@ function refreshWidget(pi: ExtensionAPI, cwd: string): void {
 
 // Track the last known UI context for widget updates
 let lastCtx: ExtensionContext | null = null;
+/** Capture a context for widget refresh. A non-UI context (e.g. a subagent
+ *  session) must never clobber the main session's UI context, so only adopt
+ *  contexts that actually carry UI. */
+function captureCtx(ctx: ExtensionContext): void {
+	if (ctx.hasUI) lastCtx = ctx;
+}
+
+// --- Cross-session file watch -------------------------------------------
+// Subagents share the same extension module instance as the main session.
+// When a subagent calls the todo tool it writes .pi/todo.json correctly but
+// its non-UI context can clobber lastCtx; captureCtx() above guards against
+// that. Watch the .pi directory so any external write — subagent, another
+// session, manual edit — always refreshes the widget in the UI session.
+let watcher: fs.FSWatcher | null = null;
+let watchedCwd: string | null = null;
+let refreshTimer: ReturnType<typeof setTimeout> | null = null;
+
+function scheduleRefresh(pi: ExtensionAPI, cwd: string): void {
+	if (refreshTimer) clearTimeout(refreshTimer);
+	refreshTimer = setTimeout(() => {
+		refreshTimer = null;
+		refreshWidget(pi, cwd);
+	}, 50);
+}
+
+function stopWatching(): void {
+	watcher?.close();
+	watcher = null;
+	watchedCwd = null;
+	if (refreshTimer) {
+		clearTimeout(refreshTimer);
+		refreshTimer = null;
+	}
+}
+
+function startWatching(pi: ExtensionAPI, cwd: string): void {
+	if (watchedCwd === cwd && watcher) return;
+	stopWatching();
+	const piDir = path.join(cwd, ".pi");
+	try {
+		if (!fs.existsSync(piDir)) {
+			// .pi/ doesn't exist yet — watch cwd until it appears, then re-target.
+			watcher = fs.watch(cwd, (_event, filename) => {
+				if (filename === ".pi") startWatching(pi, cwd);
+			});
+		} else {
+			watcher = fs.watch(piDir, (_event, filename) => {
+				if (filename === "todo.json") scheduleRefresh(pi, cwd);
+			});
+		}
+		watchedCwd = cwd;
+	} catch {
+		// fs.watch can fail on some filesystems (network mounts, watch-limit
+		// exhaustion). Fall back to polling the file directly.
+		fs.watchFile(path.join(piDir, "todo.json"), { interval: 1000 }, () => scheduleRefresh(pi, cwd));
+		watchedCwd = cwd;
+	}
+}
 
 interface TodoDetails {
 	action: string;
@@ -78,7 +136,7 @@ Only the main agent can modify the todo list. Subagents cannot call this tool.`,
 		],
 
 		async execute(toolCallId, params, _signal, _onUpdate, ctx): Promise<AgentToolResult<TodoDetails>> {
-			lastCtx = ctx;
+			captureCtx(ctx);
 			const cwd = ctx.cwd;
 
 			try {
@@ -281,7 +339,7 @@ Only the main agent can modify the todo list. Subagents cannot call this tool.`,
 	pi.registerCommand("todo", {
 		description: "CLI-style todo manager — /todo add <text>, /todo toggle <id>, /todo remove <id|*>, /todo list, /todo clear",
 		async handler(args, ctx) {
-			lastCtx = ctx;
+			captureCtx(ctx);
 			const cwd = ctx.cwd;
 			const trimmed = args.trim();
 
@@ -429,8 +487,14 @@ Only the main agent can modify the todo list. Subagents cannot call this tool.`,
 
 	// Session start: load existing todos and render widget
 	pi.on("session_start", (_event, ctx) => {
-		lastCtx = ctx;
+		captureCtx(ctx);
 		const cwd = ctx.cwd;
+		// Only the UI-bearing session needs to watch for external writes.
+		// Non-UI contexts (subagent sessions) share this same module instance,
+		// so they must not clobber lastCtx — captureCtx() above handles that.
+		if (ctx.hasUI) {
+			startWatching(pi, cwd);
+		}
 		const todoPath = `${cwd}/.pi/todo.json`;
 		if (!fs.existsSync(todoPath)) return;
 		const store = readStore(cwd);
@@ -443,6 +507,7 @@ Only the main agent can modify the todo list. Subagents cannot call this tool.`,
 	// Session shutdown: clear widget
 	pi.on("session_shutdown", (_event, ctx) => {
 		widgetVisible = true; // Reset for next session
+		stopWatching();
 		if (ctx.hasUI) {
 			ctx.ui.setWidget(WIDGET_KEY, undefined);
 		}
