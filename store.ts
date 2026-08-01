@@ -51,7 +51,7 @@ export function writeStore(cwd: string, store: TodoStore): void {
 
 /** Generate the next task ID */
 function nextId(counter: number): string {
-	return `T-${String(counter).padStart(3, "0")}`;
+	return String(counter).padStart(2, "0");
 }
 
 /** Create a new todo item */
