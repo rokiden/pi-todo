@@ -11,7 +11,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import type { AgentToolResult } from "@earendil-works/pi-agent-core";
 import { type ExtensionAPI, type ExtensionContext, type ToolDefinition } from "@earendil-works/pi-coding-agent";
-import { Text, type Component } from "@earendil-works/pi-tui";
+import { Text, type Component, type AutocompleteItem } from "@earendil-works/pi-tui";
 import { TodoParams } from "./schemas.ts";
 import {
 	addItem,
@@ -338,6 +338,19 @@ Only the main agent can modify the todo list. Subagents cannot call this tool.`,
 	//           /todo list, /todo clear
 	pi.registerCommand("todo", {
 		description: "CLI-style todo manager — /todo add <text>, /todo toggle <id>, /todo remove <id|*>, /todo list, /todo clear",
+		getArgumentCompletions(prefix) {
+			const actions = [
+				{ value: "add", label: "add", description: "/todo add <text> — create a new task" },
+				{ value: "update", label: "update", description: "/todo update <id> [--status=<pending|in-progress|done>] [--text=<text>] — change task fields by ID" },
+				{ value: "toggle", label: "toggle", description: "/todo toggle <id> — cycle status (pending → in-progress → done → pending)" },
+				{ value: "remove", label: "remove", description: "/todo remove <id|*> — delete a specific task or * to clear all" },
+				{ value: "list", label: "list", description: "/todo list [status] — show tasks, optionally filter by status" },
+				{ value: "clear", label: "clear", description: "/todo clear — remove all completed (done) tasks" },
+				{ value: "reorder", label: "reorder", description: "/todo reorder <id> <up|down> — move a task in the list order" },
+			];
+			const filtered = actions.filter((a) => a.value.startsWith(prefix));
+			return filtered.length > 0 ? filtered : null;
+		},
 		async handler(args, ctx) {
 			captureCtx(ctx);
 			const cwd = ctx.cwd;
