@@ -341,7 +341,7 @@ Only the main agent can modify the todo list. Subagents cannot call this tool.`,
 		getArgumentCompletions(prefix) {
 			const actions = [
 				{ value: "add", label: "add", description: "/todo add <text> — create a new task" },
-				{ value: "update", label: "update", description: "/todo update <id> [--status=<pending|in-progress|done>] [--text=<text>] — change task fields by ID" },
+				{ value: "reword", label: "reword", description: "/todo reword <id> <text> — change task text by ID" },
 				{ value: "toggle", label: "toggle", description: "/todo toggle <id> — cycle status (pending → in-progress → done → pending)" },
 				{ value: "remove", label: "remove", description: "/todo remove <id|*> — delete a specific task or * to clear all" },
 				{ value: "list", label: "list", description: "/todo list [status] — show tasks, optionally filter by status" },
@@ -370,6 +370,28 @@ Only the main agent can modify the todo list. Subagents cannot call this tool.`,
 					const item = addItem(cwd, rest);
 					refreshWidget(pi, cwd);
 					ctx.ui.notify(`Added: ${item.id} — ${item.text}`, "info");
+					break;
+				}
+
+				case "reword": {
+					if (!rest) {
+						ctx.ui.notify("Usage: /todo reword <id> <text>", "error");
+						return;
+					}
+					const parts = rest.split(/\s+/);
+					const id = parts[0];
+					const text = parts.slice(1).join(" ");
+					if (!id || !text) {
+						ctx.ui.notify("Usage: /todo reword <id> <text>", "error");
+						return;
+					}
+					const updated = updateItem(cwd, id, { text });
+					if (!updated) {
+                        ctx.ui.notify(`Error: Item ${id} not found.`, "error");
+						return;
+					}
+					refreshWidget(pi, cwd);
+                        ctx.ui.notify(`Reworded: ${updated.id} — ${updated.text} [${updated.status}]`, "info");
 					break;
 				}
 
