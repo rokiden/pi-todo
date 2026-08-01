@@ -4,7 +4,7 @@
 
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Container, Text, type Component, type TUI } from "@earendil-works/pi-tui";
-import type { TodoItem, TodoStatus, TodoPriority } from "./store.ts";
+import type { TodoItem, TodoStatus } from "./store.ts";
 
 type Theme = ExtensionContext["ui"]["theme"];
 
@@ -84,22 +84,9 @@ const STATUS_ICON: Record<TodoStatus, string> = {
 	pending: "[ ]",
 	"in-progress": "[•]",
 	done: "[x]",
-	blocked: "[!]",
 };
 
-const PRIORITY_LABEL: Record<TodoPriority, string> = {
-	low: "LOW",
-	medium: "MED",
-	high: "HIGH",
-	critical: "CRIT",
-};
 
-const PRIORITY_COLOR: Record<TodoPriority, string> = {
-	low: "dim",
-	medium: "dim",
-	high: "warning",
-	critical: "error",
-};
 
 /** Truncate text to fit within maxWidth (visible characters) */
 function truncate(text: string, maxWidth: number): string {
@@ -118,12 +105,9 @@ export function buildWidgetLines(items: TodoItem[], theme: Theme, width: number)
 	const pending = items.filter((i) => i.status === "pending").length;
 	const inProgress = items.filter((i) => i.status === "in-progress").length;
 	const done = items.filter((i) => i.status === "done").length;
-	const blocked = items.filter((i) => i.status === "blocked").length;
-
 	const parts: string[] = [];
 	if (pending > 0) parts.push(`${pending} pending`);
 	if (inProgress > 0) parts.push(`${inProgress} active`);
-	if (blocked > 0) parts.push(`${blocked} blocked`);
 	if (done > 0) parts.push(`${done} done`);
 	if (parts.length > 0) {
 		lines.push(truncate(`  ${theme.fg("dim", parts.join(" · "))}`, width));
@@ -133,13 +117,9 @@ export function buildWidgetLines(items: TodoItem[], theme: Theme, width: number)
 	for (let i = 0; i < maxItems; i++) {
 		const item = items[i]!;
 		const icon = STATUS_ICON[item.status];
-		const priColor = PRIORITY_COLOR[item.priority] ?? "dim";
-		const priLabel = PRIORITY_LABEL[item.priority] ?? "MED";
-		const assignee = item.assignee ? ` ${theme.fg("dim", `· ${item.assignee}`)}` : "";
-		const blocked = item.blockedBy ? ` ${theme.fg("error", `(blocked by ${item.blockedBy})`)}` : "";
-		const text = truncate(item.text, width - 20);
+		const text = truncate(item.text, width - 24);
 		lines.push(
-			truncate(`  ${icon} ${theme.fg(priColor, `[${priLabel}]`)} ${text}${assignee}${blocked}`, width),
+			truncate(`  ${icon} ${theme.fg("dim", `[${item.id}]`)} ${text}`, width),
 		);
 	}
 
@@ -175,17 +155,9 @@ export function renderTodoResult(items: TodoItem[], theme: Theme, width: number)
 
 	for (const item of items) {
 		const icon = STATUS_ICON[item.status];
-		const priColor = PRIORITY_COLOR[item.priority] ?? "dim";
-		const priLabel = PRIORITY_LABEL[item.priority] ?? "MED";
-		const assignee = item.assignee ? ` · ${item.assignee}` : "";
-		const blocked = item.blockedBy ? ` (blocked by ${item.blockedBy})` : "";
-		const text = truncate(item.text, width - 25);
+		const text = truncate(item.text, width - 28);
 		container.addChild(
-			new Text(
-				`  ${icon} ${theme.bold(item.id)} ${theme.fg(priColor, `[${priLabel}]`)} ${text}${theme.fg("dim", assignee)}${blocked ? theme.fg("error", blocked) : ""}`,
-				0,
-				0,
-			),
+			new Text(`  ${icon} ${theme.bold(item.id)} ${text}`, 0, 0),
 		);
 	}
 

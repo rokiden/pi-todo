@@ -6,14 +6,8 @@ import { Type } from "typebox";
 
 const StatusEnum = Type.Unsafe({
 	type: "string",
-	enum: ["pending", "in-progress", "done", "blocked"],
-	description: "Task status: pending, in-progress, done, or blocked",
-});
-
-const PriorityEnum = Type.Unsafe({
-	type: "string",
-	enum: ["low", "medium", "high", "critical"],
-	description: "Task priority: low, medium, high, or critical",
+	enum: ["pending", "in-progress", "done"],
+	description: "Task status: pending, in-progress, or done",
 });
 
 const ActionEnum = Type.Unsafe({
@@ -39,9 +33,6 @@ export const TodoParams = Type.Object({
 	id: Type.Optional(Type.String({ description: "Task ID (e.g. T-001). Required for update, toggle, remove, reorder." })),
 	text: Type.Optional(Type.String({ description: "Task description text. Required for add, optional for update." })),
 	status: Type.Optional(StatusEnum),
-	priority: Type.Optional(PriorityEnum),
-	assignee: Type.Optional(Type.String({ description: "Who is assigned to this task (e.g. Ultron, Marcus, Quinn)" })),
 	filter: Type.Optional(FilterEnum),
-	blockedBy: Type.Optional(Type.String({ description: "Task ID this item is blocked by (null to clear)" })),
 	direction: Type.Optional(DirectionEnum),
 });

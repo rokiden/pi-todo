@@ -6,26 +6,20 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 
-export type TodoStatus = "pending" | "in-progress" | "done" | "blocked";
-export type TodoPriority = "low" | "medium" | "high" | "critical";
+export type TodoStatus = "pending" | "in-progress" | "done";
 
 export interface TodoItem {
 	id: string;
 	text: string;
 	status: TodoStatus;
-	priority: TodoPriority;
-	assignee: string | null;
 	createdAt: string;
 	updatedAt: string;
-	blockedBy: string | null;
 }
 
 export interface TodoStore {
 	items: TodoItem[];
 	counter: number;
 }
-
-const DEFAULT_PRIORITY: TodoPriority = "medium";
 
 /** Get the path to the todo file for the given project root */
 export function getTodoPath(cwd: string): string {
@@ -61,13 +55,7 @@ function nextId(counter: number): string {
 }
 
 /** Create a new todo item */
-export function addItem(
-	cwd: string,
-	text: string,
-	priority?: TodoPriority,
-	assignee?: string,
-	blockedBy?: string,
-): TodoItem {
+export function addItem(cwd: string, text: string): TodoItem {
 	const store = readStore(cwd);
 	store.counter += 1;
 	const now = new Date().toISOString();
@@ -75,11 +63,8 @@ export function addItem(
 		id: nextId(store.counter),
 		text,
 		status: "pending",
-		priority: priority ?? DEFAULT_PRIORITY,
-		assignee: assignee ?? null,
 		createdAt: now,
 		updatedAt: now,
-		blockedBy: blockedBy ?? null,
 	};
 	store.items.push(item);
 	writeStore(cwd, store);
@@ -90,16 +75,13 @@ export function addItem(
 export function updateItem(
 	cwd: string,
 	id: string,
-	updates: Partial<Pick<TodoItem, "text" | "status" | "priority" | "assignee" | "blockedBy">>,
+	updates: Partial<Pick<TodoItem, "text" | "status">>,
 ): TodoItem | null {
 	const store = readStore(cwd);
 	const item = store.items.find((i) => i.id === id);
 	if (!item) return null;
 	if (updates.text !== undefined) item.text = updates.text;
 	if (updates.status !== undefined) item.status = updates.status;
-	if (updates.priority !== undefined) item.priority = updates.priority;
-	if (updates.assignee !== undefined) item.assignee = updates.assignee;
-	if (updates.blockedBy !== undefined) item.blockedBy = updates.blockedBy;
 	item.updatedAt = new Date().toISOString();
 	writeStore(cwd, store);
 	return item;
@@ -110,13 +92,16 @@ export function toggleItem(cwd: string, id: string): TodoItem | null {
 	const store = readStore(cwd);
 	const item = store.items.find((i) => i.id === id);
 	if (!item) return null;
-	const cycle: Record<TodoStatus, TodoStatus> = {
-		pending: "in-progress",
-		"in-progress": "done",
-		done: "pending",
-		blocked: "in-progress",
-	};
-	item.status = cycle[item.status];
+	switch (item.status) {
+		case "pending":
+			item.status = "in-progress";
+			break;
+		case "in-progress":
+			item.status = "done";
+			break;
+		default:
+			item.status = "pending";
+		}
 	item.updatedAt = new Date().toISOString();
 	writeStore(cwd, store);
 	return item;

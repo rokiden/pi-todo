@@ -3,7 +3,8 @@
  *
  * Registers a `todo` tool the LLM can call to manage a task list stored in
  * `.pi/todo.json` in the project root. A live widget above the editor shows
- * the current state at all times.
+ * the current state at all times. Supports CLI-style `/todo` slash commands
+ * and an `Alt+T` hotkey for toggling widget visibility.
  */
 
 import * as fs from "node:fs";
@@ -21,18 +22,15 @@ import {
 	toggleItem,
 	updateItem,
 	type TodoItem,
-	type TodoPriority,
 	type TodoStatus,
 } from "./store.ts";
-import { createWidgetComponent, renderTodoResult } from "./render.ts";
+import { buildWidgetLines, createWidgetComponent, renderTodoResult } from "./render.ts";
 
 const WIDGET_KEY = "todo";
+let widgetVisible = true;
 
 /** Update the live widget from the current store state */
 function refreshWidget(pi: ExtensionAPI, cwd: string): void {
-	// We need a UI context — grab it from the last known context
-	// The widget is set via ctx.ui, but we can also use pi's event system
-	// For now, we store the last context and use it here
 	const ctx = lastCtx;
 	if (!ctx || !ctx.hasUI) return;
 	const store = readStore(cwd);
@@ -40,7 +38,9 @@ function refreshWidget(pi: ExtensionAPI, cwd: string): void {
 		ctx.ui.setWidget(WIDGET_KEY, undefined);
 		return;
 	}
-	ctx.ui.setWidget(WIDGET_KEY, createWidgetComponent(store.items));
+	if (widgetVisible) {
+		ctx.ui.setWidget(WIDGET_KEY, createWidgetComponent(store.items));
+	}
 }
 
 // Track the last known UI context for widget updates
@@ -62,12 +62,12 @@ export default function registerTodoExtension(pi: ExtensionAPI): void {
 		description: `Manage a persistent per-project todo list stored in .pi/todo.json. The list survives across sessions and is shown as a live widget above the editor.
 
 Actions:
-- add: Create a new todo item (requires text, optional: priority, assignee, blockedBy)
-- update: Modify an existing item by ID (requires id, optional: text, status, priority, assignee, blockedBy)
-- toggle: Cycle status pending → in-progress → done → pending (requires id)
-- remove: Delete an item by ID (requires id)
-- list: List all items, optionally filtered by status (optional: filter)
-- clear: Remove all completed items
+- add: Create a new todo item (requires text)
+- update: Modify an existing item by ID (requires id, optional: text, status)
+- toggle: Cycle status pending → in-progress → done (requires id)
+- remove: Delete single task by ID (requires id)
+- list: List all items (optional: filter by status)
+- clear: Clears completed items only
 - reorder: Move an item up or down in the list (requires id, direction)
 
 Only the main agent can modify the todo list. Subagents cannot call this tool.`,
@@ -75,14 +75,11 @@ Only the main agent can modify the todo list. Subagents cannot call this tool.`,
 		promptSnippet: "Manage a persistent todo list with add, update, toggle, remove, list, clear, and reorder actions.",
 		promptGuidelines: [
 			"Use the todo tool to track multi-step tasks — add items before starting work, toggle to in-progress when beginning, toggle to done when complete.",
-			"Always set the assignee field to the agent doing the work (e.g. Ultron, Marcus, Quinn, Maya).",
-			"Use blockedBy to mark tasks that can't start until another task is done.",
 		],
 
 		async execute(toolCallId, params, _signal, _onUpdate, ctx): Promise<AgentToolResult<TodoDetails>> {
 			lastCtx = ctx;
 			const cwd = ctx.cwd;
-			const width = process.stdout.columns || 120;
 
 			try {
 				switch (params.action) {
@@ -94,13 +91,7 @@ Only the main agent can modify the todo list. Subagents cannot call this tool.`,
 								details: { action: "add", items: [], error: "text is required" },
 							};
 						}
-						const item = addItem(
-							cwd,
-							params.text,
-							params.priority as TodoPriority | undefined,
-							params.assignee,
-							params.blockedBy,
-						);
+						const item = addItem(cwd, params.text);
 						refreshWidget(pi, cwd);
 						const all = listItems(cwd);
 						return {
@@ -120,9 +111,6 @@ Only the main agent can modify the todo list. Subagents cannot call this tool.`,
 						const updated = updateItem(cwd, params.id, {
 							text: params.text,
 							status: params.status as TodoStatus | undefined,
-							priority: params.priority as TodoPriority | undefined,
-							assignee: params.assignee,
-							blockedBy: params.blockedBy,
 						});
 						if (!updated) {
 							return {
@@ -195,16 +183,6 @@ Only the main agent can modify the todo list. Subagents cannot call this tool.`,
 						};
 					}
 
-					case "clear": {
-						const count = clearCompleted(cwd);
-						refreshWidget(pi, cwd);
-						const all = listItems(cwd);
-						return {
-							content: [{ type: "text", text: `Cleared ${count} completed item${count === 1 ? "" : "s"}.` }],
-							details: { action: "clear", items: all, removed: count },
-						};
-					}
-
 					case "reorder": {
 						if (!params.id) {
 							return {
@@ -220,7 +198,7 @@ Only the main agent can modify the todo list. Subagents cannot call this tool.`,
 								details: { action: "reorder", items: [], error: "direction is required" },
 							};
 						}
-						const moved = reorderItem(cwd, params.id, params.direction);
+						const moved = reorderItem(cwd, params.id, params.direction as "up" | "down");
 						if (!moved) {
 							return {
 								content: [{ type: "text", text: `Error: Could not reorder ${params.id} (not found or already at ${params.direction === "up" ? "top" : "bottom"}).` }],
@@ -233,6 +211,16 @@ Only the main agent can modify the todo list. Subagents cannot call this tool.`,
 						return {
 							content: [{ type: "text", text: `Reordered: ${params.id} ${params.direction}` }],
 							details: { action: "reorder", items: all, moved: true },
+						};
+					}
+
+					case "clear": {
+						const count = clearCompleted(cwd);
+						refreshWidget(pi, cwd);
+						const all = listItems(cwd);
+						return {
+							content: [{ type: "text", text: `Cleared ${count} completed item${count === 1 ? "" : "s"}.` }],
+							details: { action: "clear", items: all, removed: count },
 						};
 					}
 
@@ -287,27 +275,155 @@ Only the main agent can modify the todo list. Subagents cannot call this tool.`,
 
 	pi.registerTool(tool);
 
-	// Slash command: /todo
+	// Slash command with CLI-style arg parsing: /todo add Build login page
+	// Supports: /todo add <text>, /todo toggle <id>, /todo remove <id|*>,
+	//           /todo list, /todo clear
 	pi.registerCommand("todo", {
-		description: "List all todo items, or clear completed items with '/todo clear'",
+		description: "CLI-style todo manager — /todo add <text>, /todo toggle <id>, /todo remove <id|*>, /todo list, /todo clear",
 		async handler(args, ctx) {
 			lastCtx = ctx;
 			const cwd = ctx.cwd;
-			const arg = args.trim();
+			const trimmed = args.trim();
 
-			if (arg === "clear") {
-				const count = clearCompleted(cwd);
-				refreshWidget(pi, cwd);
-				ctx.ui.notify(`Cleared ${count} completed item${count === 1 ? "" : "s"}.`, "info");
-				return;
-			}
+			// Parse action from first word
+			const parts = trimmed.split(/\s+/);
+			const action = parts[0]?.toLowerCase();
+			const rest = parts.slice(1).join(" ");
 
-			const items = listItems(cwd);
-			if (items.length === 0) {
-				ctx.ui.notify("No todo items.", "info");
-				return;
+			switch (action) {
+				case "add": {
+					if (!rest) {
+						ctx.ui.notify("Usage: /todo add <text>", "error");
+						return;
+					}
+					const item = addItem(cwd, rest);
+					refreshWidget(pi, cwd);
+					ctx.ui.notify(`Added: ${item.id} — ${item.text}`, "info");
+					break;
+				}
+
+				case "toggle": {
+					if (!rest) {
+						ctx.ui.notify("Usage: /todo toggle <id>", "error");
+						return;
+					}
+					const toggled = toggleItem(cwd, rest);
+					if (!toggled) {
+						ctx.ui.notify(`Error: Item ${rest} not found.`, "error");
+						return;
+					}
+					refreshWidget(pi, cwd);
+					ctx.ui.notify(`Toggled: ${toggled.id} — ${toggled.text} → ${toggled.status}`, "info");
+					break;
+				}
+
+				case "remove": {
+					if (!rest) {
+						ctx.ui.notify("Usage: /todo remove <id> or /todo remove *", "error");
+						return;
+					}
+					if (rest === "*") {
+						// Remove all tasks at once
+						const store = readStore(cwd);
+						if (store.items.length === 0) {
+							ctx.ui.notify("No tasks to remove.", "info");
+							return;
+						}
+						const count = store.items.length;
+						fs.writeFileSync(
+							`${cwd}/.pi/todo.json`,
+							JSON.stringify({ items: [], counter: 0 }, null, "\t") + "\n",
+							"utf-8",
+						);
+						refreshWidget(pi, cwd);
+						ctx.ui.notify(`Removed all ${count} task${count === 1 ? "" : "s"}.`, "info");
+						return;
+					}
+					const removed = removeItem(cwd, rest);
+					if (!removed) {
+						ctx.ui.notify(`Error: Item ${rest} not found.`, "error");
+						return;
+					}
+					refreshWidget(pi, cwd);
+					ctx.ui.notify(`Removed: ${rest}`, "info");
+					break;
+				}
+
+				case "list": {
+					const items = listItems(cwd);
+					if (items.length === 0) {
+						ctx.ui.notify("No todo items.", "info");
+						return;
+					}
+					ctx.ui.notify(formatListText(items), "info");
+					break;
+				}
+
+				case "reorder": {
+					if (!rest) {
+						ctx.ui.notify("Usage: /todo reorder <id> <direction>", "error");
+						return;
+					}
+					const parts = rest.split(/\s+/);
+					const id = parts[0];
+					const direction = parts[1] as "up" | "down" | undefined;
+					if (!id) {
+						ctx.ui.notify("Usage: /todo reorder <id> <direction>", "error");
+						return;
+					}
+					if (!direction || (direction !== "up" && direction !== "down")) {
+						ctx.ui.notify("Usage: /todo reorder <id> <direction>", "error");
+						return;
+					}
+					const moved = reorderItem(cwd, id, direction);
+					if (!moved) {
+						ctx.ui.notify(`Error: Could not reorder ${id} (not found or already at ${direction === "up" ? "top" : "bottom"}).`, "error");
+						return;
+					}
+					refreshWidget(pi, cwd);
+					ctx.ui.notify(`Reordered: ${id} ${direction}`, "info");
+					break;
+				}
+
+				case "clear": {
+					const count = clearCompleted(cwd);
+					refreshWidget(pi, cwd);
+					ctx.ui.notify(`Cleared ${count} completed item${count === 1 ? "" : "s"}.`, "info");
+					break;
+				}
+
+				default:
+					// No action specified — show current list
+					const items = listItems(cwd);
+					if (items.length === 0) {
+						ctx.ui.notify("No todo items.", "info");
+						return;
+					}
+					ctx.ui.notify(formatListText(items), "info");
+					break;
 			}
-			ctx.ui.notify(formatListText(items), "info");
+		},
+	});
+
+	// Alt+T hotkey — toggles widget visibility
+	pi.registerShortcut("alt+t", {
+		description: "Toggle todo widget visibility",
+		handler: async (ctx) => {
+			widgetVisible = !widgetVisible;
+			if (!widgetVisible) {
+				ctx.ui.setWidget(WIDGET_KEY, undefined);
+			} else {
+				const store = readStore(ctx.cwd);
+				if (store.items.length > 0) {
+					ctx.ui.setWidget(WIDGET_KEY, createWidgetComponent(store.items));
+				}
+			}
+			ctx.ui.notify(
+				widgetVisible
+					? "Todo widget shown"
+					: "Todo widget hidden",
+				"info",
+			);
 		},
 	});
 
@@ -319,13 +435,14 @@ Only the main agent can modify the todo list. Subagents cannot call this tool.`,
 		if (!fs.existsSync(todoPath)) return;
 		const store = readStore(cwd);
 		if (store.items.length === 0) return;
-		if (ctx.hasUI) {
+		if (ctx.hasUI && widgetVisible) {
 			ctx.ui.setWidget(WIDGET_KEY, createWidgetComponent(store.items));
 		}
 	});
 
 	// Session shutdown: clear widget
 	pi.on("session_shutdown", (_event, ctx) => {
+		widgetVisible = true; // Reset for next session
 		if (ctx.hasUI) {
 			ctx.ui.setWidget(WIDGET_KEY, undefined);
 		}
@@ -337,10 +454,8 @@ function formatListText(items: TodoItem[]): string {
 	if (items.length === 0) return "No todo items.";
 	const lines: string[] = [];
 	for (const item of items) {
-		const icon = item.status === "done" ? "[x]" : item.status === "in-progress" ? "[•]" : item.status === "blocked" ? "[!]" : "[ ]";
-		const assignee = item.assignee ? ` · ${item.assignee}` : "";
-		const blocked = item.blockedBy ? ` (blocked by ${item.blockedBy})` : "";
-		lines.push(`${icon} ${item.id} [${item.priority.toUpperCase()}] ${item.text}${assignee}${blocked}`);
+		const icon = item.status === "done" ? "[x]" : item.status === "in-progress" ? "[•]" : "[ ]";
+		lines.push(`${icon} ${item.id} ${item.text}`);
 	}
 	return lines.join("\n");
 }
