@@ -4,7 +4,7 @@
  * Registers a `todo` tool the LLM can call to manage a task list stored in
  * `.pi/todo.json` in the project root. A live widget above the editor shows
  * the current state at all times. Supports CLI-style `/todo` slash commands
- * and an `Alt+T` hotkey for toggling widget visibility.
+ * and an `Alt+T` hotkey for collapsing/expanding the widget.
  */
 
 import * as fs from "node:fs";
@@ -25,22 +25,26 @@ import {
 	type TodoItem,
 	type TodoStatus,
 } from "./store.ts";
-import { buildWidgetLines, createWidgetComponent, renderTodoResult } from "./render.ts";
+import { buildWidgetLines, createCollapsedWidgetComponent, createWidgetComponent, renderTodoResult } from "./render.ts";
 
 const WIDGET_KEY = "todo";
-let widgetVisible = true;
+let widgetCollapsed = false;
 /** Update the live widget from the current store state */
 function refreshWidget(pi: ExtensionAPI, cwd: string): void {
 	const ctx = lastCtx;
 	if (!ctx || !ctx.hasUI) return;
 	const store = readStore(cwd);
 	if (store.items.length === 0) {
+		// Hidden entirely when there are no todos
 		ctx.ui.setWidget(WIDGET_KEY, undefined);
 		return;
 	}
-	if (widgetVisible) {
-		ctx.ui.setWidget(WIDGET_KEY, createWidgetComponent(store.items));
-	}
+	ctx.ui.setWidget(
+		WIDGET_KEY,
+		widgetCollapsed
+			? createCollapsedWidgetComponent(store.items)
+			: createWidgetComponent(store.items),
+	);
 }
 
 // Track the last known UI context for widget updates
@@ -498,23 +502,24 @@ Only the main agent can modify the todo list. Subagents cannot call this tool.`,
 		},
 	});
 
-	// Alt+T hotkey — toggles widget visibility
+	// Alt+T hotkey — collapses/expands the widget (never hides it)
 	pi.registerShortcut("alt+t", {
-		description: "Toggle todo widget visibility",
+		description: "Collapse or expand the todo widget",
 		handler: async (ctx) => {
-			widgetVisible = !widgetVisible;
-			if (!widgetVisible) {
+			widgetCollapsed = !widgetCollapsed;
+			const store = readStore(ctx.cwd);
+			if (store.items.length === 0) {
 				ctx.ui.setWidget(WIDGET_KEY, undefined);
 			} else {
-				const store = readStore(ctx.cwd);
-				if (store.items.length > 0) {
-					ctx.ui.setWidget(WIDGET_KEY, createWidgetComponent(store.items));
-				}
+				ctx.ui.setWidget(
+					WIDGET_KEY,
+					widgetCollapsed
+						? createCollapsedWidgetComponent(store.items)
+						: createWidgetComponent(store.items),
+				);
 			}
 			ctx.ui.notify(
-				widgetVisible
-					? "Todo widget shown"
-					: "Todo widget hidden",
+				widgetCollapsed ? "Todo widget collapsed" : "Todo widget expanded",
 				"info",
 			);
 		},
@@ -534,14 +539,19 @@ Only the main agent can modify the todo list. Subagents cannot call this tool.`,
 		if (!fs.existsSync(todoPath)) return;
 		const store = readStore(cwd);
 		if (store.items.length === 0) return;
-		if (ctx.hasUI && widgetVisible) {
-			ctx.ui.setWidget(WIDGET_KEY, createWidgetComponent(store.items));
+		if (ctx.hasUI) {
+			ctx.ui.setWidget(
+				WIDGET_KEY,
+				widgetCollapsed
+					? createCollapsedWidgetComponent(store.items)
+					: createWidgetComponent(store.items),
+			);
 		}
 	});
 
 	// Session shutdown: clear widget
 	pi.on("session_shutdown", (_event, ctx) => {
-		widgetVisible = true; // Reset for next session
+		widgetCollapsed = false; // Reset for next session
 		stopWatching();
 		if (ctx.hasUI) {
 			ctx.ui.setWidget(WIDGET_KEY, undefined);

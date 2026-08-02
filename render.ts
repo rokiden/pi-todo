@@ -98,30 +98,22 @@ export function buildWidgetLines(items: TodoItem[], theme: Theme, width: number)
 	if (items.length === 0) return [];
 
 	const lines: string[] = [];
-	const header = `${theme.fg("accent", theme.bold("TODO"))} ${theme.fg("dim", `· ${items.length} task${items.length === 1 ? "" : "s"}`)}`;
-	lines.push(truncate(header, width));
-
 	const pending = items.filter((i) => i.status === "pending").length;
 	const done = items.filter((i) => i.status === "done").length;
-	const parts: string[] = [];
-	if (pending > 0) parts.push(`${pending} pending`);
-	if (done > 0) parts.push(`${done} done`);
-	if (parts.length > 0) {
-		lines.push(truncate(`  ${theme.fg("dim", parts.join(" · "))}`, width));
-	}
+	// One header line: "TODO · N tasks · P pending · D done" (zero counters omitted)
+	const counters: string[] = [`${items.length} task${items.length === 1 ? "" : "s"}`];
+	if (pending > 0) counters.push(`${pending} pending`);
+	if (done > 0) counters.push(`${done} done`);
+	const header = `${theme.fg("accent", theme.bold("TODO"))} ${theme.fg("dim", `· ${counters.join(" · ")}`)}`;
+	lines.push(truncate(header, width));
 
-	const maxItems = Math.min(items.length, 8);
-	for (let i = 0; i < maxItems; i++) {
-		const item = items[i]!;
+	// No height limit — render every item
+	for (const item of items) {
 		const icon = STATUS_ICON[item.status];
 		const text = truncate(item.text, width - 24);
 		lines.push(
 			truncate(`  ${icon} ${theme.fg("dim", `[${item.id}]`)} ${text}`, width),
 		);
-	}
-
-	if (items.length > maxItems) {
-		lines.push(truncate(`  ${theme.fg("dim", `… and ${items.length - maxItems} more`)}`, width));
 	}
 
 	return lines;
@@ -137,6 +129,32 @@ export function createWidgetComponent(items: TodoItem[]): (tui: unknown, theme: 
 			box.addChild(new Text(line, 1, 0));
 		}
 		return box;
+	};
+}
+
+/** Create the collapsed single-line widget (no border, full width):
+ *  " ──── TODO · 2 tasks · 1 pending · 1 done ──────────────── " */
+export function createCollapsedWidgetComponent(items: TodoItem[]): (tui: unknown, theme: Theme) => Component {
+	return (_tui: unknown, theme: Theme) => {
+		const width = process.stdout.columns || 120;
+		const pending = items.filter((i) => i.status === "pending").length;
+		const done = items.filter((i) => i.status === "done").length;
+		const summary = `${items.length} task${items.length === 1 ? "" : "s"} · ${pending} pending · ${done} done`;
+		// Keep the summary within the terminal width (" ──── TODO · " + "  " = 15 chars)
+		const summaryMax = Math.max(0, width - 15);
+		const shown =
+			summary.length > summaryMax && summaryMax > 0
+				? summary.slice(0, summaryMax - 1) + "…"
+				: summary;
+		// Fill with dashes, keeping a single trailing space to mirror the left gap
+		const filler = "─".repeat(Math.max(0, width - 15 - shown.length));
+		// Only the line decoration uses the border color; TODO/counters match the full widget
+		const line =
+			`${theme.fg("success", " ──── ")}` +
+			`${theme.fg("accent", theme.bold("TODO"))}` +
+			`${theme.fg("dim", ` · ${shown} `)}` +
+			`${theme.fg("success", `${filler} `)}`;
+		return new Text(line, 0, 0);
 	};
 }
 
