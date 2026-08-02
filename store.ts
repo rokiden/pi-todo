@@ -6,7 +6,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 
-export type TodoStatus = "pending" | "in-progress" | "done";
+export type TodoStatus = "pending" | "done";
 
 export interface TodoItem {
 	id: string;
@@ -34,6 +34,12 @@ export function readStore(cwd: string): TodoStore {
 		const parsed = JSON.parse(raw) as TodoStore;
 		if (!parsed.items || !Array.isArray(parsed.items)) {
 			return { items: [], counter: 0 };
+		}
+		// Normalize legacy "in-progress" status (removed) to "pending"
+		for (const item of parsed.items) {
+			if (item.status !== "pending" && item.status !== "done") {
+				item.status = "pending";
+			}
 		}
 		return parsed;
 	} catch {
@@ -87,16 +93,13 @@ export function updateItem(
 	return item;
 }
 
-/** Toggle status: pending → in-progress → done → pending. Returns updated item or null. */
+/** Toggle status: pending → done → pending. Returns updated item or null. */
 export function toggleItem(cwd: string, id: string): TodoItem | null {
 	const store = readStore(cwd);
 	const item = store.items.find((i) => i.id === id);
 	if (!item) return null;
 	switch (item.status) {
 		case "pending":
-			item.status = "in-progress";
-			break;
-		case "in-progress":
 			item.status = "done";
 			break;
 		default:

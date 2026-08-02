@@ -122,7 +122,7 @@ export default function registerTodoExtension(pi: ExtensionAPI): void {
 Actions:
 - add: Create a new todo item (requires text)
 - update: Modify an existing item by ID (requires id, optional: text, status)
-- toggle: Cycle status pending → in-progress → done (requires id)
+- toggle: Cycle status pending → done (requires id)
 - remove: Delete single task by ID (requires id)
 - list: List all items (optional: filter by status)
 - clear: Clears completed items only
@@ -132,7 +132,7 @@ Only the main agent can modify the todo list. Subagents cannot call this tool.`,
 		parameters: TodoParams,
 		promptSnippet: "Manage a persistent todo list with add, update, toggle, remove, list, clear, and reorder actions.",
 		promptGuidelines: [
-			"Use the todo tool to track multi-step tasks — add items before starting work, toggle to in-progress when beginning, toggle to done when complete.",
+			"Use the todo tool to track multi-step tasks — add items before starting work, toggle to done when complete.",
 		],
 
 		async execute(toolCallId, params, _signal, _onUpdate, ctx): Promise<AgentToolResult<TodoDetails>> {
@@ -342,7 +342,7 @@ Only the main agent can modify the todo list. Subagents cannot call this tool.`,
 			const actions = [
 				{ value: "add", label: "add", description: "/todo add <text> — create a new task" },
 				{ value: "reword", label: "reword", description: "/todo reword <id> <text> — change task text by ID" },
-				{ value: "toggle", label: "toggle", description: "/todo toggle <id> — cycle status (pending → in-progress → done → pending)" },
+				{ value: "toggle", label: "toggle", description: "/todo toggle <id> — cycle status (pending → done → pending)" },
 				{ value: "remove", label: "remove", description: "/todo remove <id|*> — delete a specific task or * to clear all" },
 				{ value: "list", label: "list", description: "/todo list [status] — show tasks, optionally filter by status" },
 				{ value: "clear", label: "clear", description: "/todo clear — remove all completed (done) tasks" },
@@ -554,7 +554,7 @@ function formatListText(items: TodoItem[]): string {
 	if (items.length === 0) return "No todo items.";
 	const lines: string[] = [];
 	for (const item of items) {
-		const icon = item.status === "done" ? "[x]" : item.status === "in-progress" ? "[•]" : "[ ]";
+		const icon = item.status === "done" ? "[x]" : "[ ]";
 		lines.push(`${icon} ${item.id} ${item.text}`);
 	}
 	return lines.join("\n");

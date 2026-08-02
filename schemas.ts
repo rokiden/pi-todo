@@ -6,8 +6,8 @@ import { Type } from "typebox";
 
 const StatusEnum = Type.Unsafe({
 	type: "string",
-	enum: ["pending", "in-progress", "done"],
-	description: "Task status: pending, in-progress, or done",
+	enum: ["pending", "done"],
+	description: "Task status: pending or done",
 });
 
 const ActionEnum = Type.Unsafe({
@@ -18,8 +18,8 @@ const ActionEnum = Type.Unsafe({
 
 const FilterEnum = Type.Unsafe({
 	type: "string",
-	enum: ["all", "pending", "in-progress", "done", "blocked"],
-	description: "Filter for list action: all, pending, in-progress, done, or blocked",
+	enum: ["all", "pending", "done"],
+	description: "Filter for list action: all, pending, or done",
 });
 
 const DirectionEnum = Type.Unsafe({

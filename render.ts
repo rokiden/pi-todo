@@ -82,7 +82,6 @@ class BorderedBox implements Component {
 
 const STATUS_ICON: Record<TodoStatus, string> = {
 	pending: "[ ]",
-	"in-progress": "[•]",
 	done: "[x]",
 };
 
@@ -103,11 +102,9 @@ export function buildWidgetLines(items: TodoItem[], theme: Theme, width: number)
 	lines.push(truncate(header, width));
 
 	const pending = items.filter((i) => i.status === "pending").length;
-	const inProgress = items.filter((i) => i.status === "in-progress").length;
 	const done = items.filter((i) => i.status === "done").length;
 	const parts: string[] = [];
 	if (pending > 0) parts.push(`${pending} pending`);
-	if (inProgress > 0) parts.push(`${inProgress} active`);
 	if (done > 0) parts.push(`${done} done`);
 	if (parts.length > 0) {
 		lines.push(truncate(`  ${theme.fg("dim", parts.join(" · "))}`, width));
