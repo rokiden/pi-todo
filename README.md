@@ -9,7 +9,7 @@ Tasks are stored in `.pi/todo.json`, so the list survives across sessions and re
 - Persistent per-project task storage in `.pi/todo.json`
 - Sequential numeric task IDs (`01`, `02`, …)
 - Two task states: `pending` and `done`
-- LLM `todo` tool with add, update, toggle, remove, list, clear, and reorder actions
+- LLM `todo` tool with add, update, toggle, delete, list, clear, and reorder actions
 - CLI-style `/todo` slash commands
 - Live widget above the editor with task counts and status icons
 - Automatic widget refresh when `.pi/todo.json` changes externally
@@ -50,12 +50,12 @@ Restart pi after installing or updating the extension.
 /todo toggle 01
 /todo list
 /todo reorder 02 up
-/todo remove 01
-/todo remove *
+/todo delete 01
+/todo delete *
 /todo clear
 ```
 
-Running `/todo` without an action displays the current list. Toggling cycles between `pending` and `done`. The `clear` command removes completed tasks, while `remove *` removes every task and resets the counter.
+Running `/todo` without an action displays the current list. Toggling cycles between `pending` and `done`. The `clear` command removes completed tasks, while `delete *` deletes every task and resets the counter.
 
 The widget is hidden when there are no tasks. Press `Alt+T` to switch between the full widget and its one-line collapsed summary.
 
@@ -68,7 +68,7 @@ The extension also registers a `todo` tool for the agent with these actions:
 | `add` | `text` | Create a task |
 | `update` | `id` | Change a task's text and/or status |
 | `toggle` | `id` | Switch between `pending` and `done` |
-| `remove` | `id` | Delete a task |
+| `delete` | `id` | Delete a task |
 | `list` | — | List tasks; optionally filter by status |
 | `clear` | — | Remove completed tasks |
 | `reorder` | `id`, `direction` | Move a task `up` or `down` |

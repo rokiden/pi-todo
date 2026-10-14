@@ -110,8 +110,8 @@ export function toggleItem(cwd: string, id: string): TodoItem | null {
 	return item;
 }
 
-/** Remove an item by ID. Returns true if removed, false if not found. */
-export function removeItem(cwd: string, id: string): boolean {
+/** Delete an item by ID. Returns true if deleted, false if not found. */
+export function deleteItem(cwd: string, id: string): boolean {
 	const store = readStore(cwd);
 	const before = store.items.length;
 	store.items = store.items.filter((i) => i.id !== id);

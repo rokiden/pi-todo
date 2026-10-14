@@ -12,7 +12,7 @@ const StatusEnum = Type.Unsafe({
 
 const ActionEnum = Type.Unsafe({
 	type: "string",
-	enum: ["add", "update", "toggle", "remove", "list", "clear", "reorder"],
+	enum: ["add", "update", "toggle", "delete", "list", "clear", "reorder"],
 	description: "Action to perform on the todo list",
 });
 
@@ -30,7 +30,7 @@ const DirectionEnum = Type.Unsafe({
 
 export const TodoParams = Type.Object({
 	action: ActionEnum,
-	id: Type.Optional(Type.String({ description: "Task ID (e.g. 00). Required for update, toggle, remove, reorder." })),
+	id: Type.Optional(Type.String({ description: "Task ID (e.g. 00). Required for update, toggle, delete, reorder." })),
 	text: Type.Optional(Type.String({ description: "Task description text. Required for add, optional for update." })),
 	status: Type.Optional(StatusEnum),
 	filter: Type.Optional(FilterEnum),

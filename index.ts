@@ -18,7 +18,7 @@ import {
 	clearCompleted,
 	listItems,
 	readStore,
-	removeItem,
+	deleteItem,
 	reorderItem,
 	toggleItem,
 	updateItem,
@@ -127,14 +127,14 @@ Actions:
 - add: Create a new todo item (requires text)
 - update: Modify an existing item by ID (requires id, optional: text, status)
 - toggle: Cycle status pending → done (requires id)
-- remove: Delete single task by ID (requires id)
+- delete: Delete single task by ID (requires id)
 - list: List all items (optional: filter by status)
 - clear: Clears completed items only
 - reorder: Move an item up or down in the list (requires id, direction)
 
 Only the main agent can modify the todo list. Subagents cannot call this tool.`,
 		parameters: TodoParams,
-		promptSnippet: "Manage a persistent todo list with add, update, toggle, remove, list, clear, and reorder actions.",
+		promptSnippet: "Manage a persistent todo list with add, update, toggle, delete, list, clear, and reorder actions.",
 		promptGuidelines: [
 			"Use the todo tool to track multi-step tasks — add items before starting work, toggle to done when complete.",
 		],
@@ -213,27 +213,27 @@ Only the main agent can modify the todo list. Subagents cannot call this tool.`,
 						};
 					}
 
-					case "remove": {
+					case "delete": {
 						if (!params.id) {
 							return {
-								content: [{ type: "text", text: "Error: 'id' is required for remove action." }],
+								content: [{ type: "text", text: "Error: 'id' is required for delete action." }],
 								isError: true,
-								details: { action: "remove", items: [], error: "id is required" },
+								details: { action: "delete", items: [], error: "id is required" },
 							};
 						}
-						const removed = removeItem(cwd, params.id);
-						if (!removed) {
+						const deleted = deleteItem(cwd, params.id);
+						if (!deleted) {
 							return {
 								content: [{ type: "text", text: `Error: Item ${params.id} not found.` }],
 								isError: true,
-								details: { action: "remove", items: [], error: "item not found" },
+								details: { action: "delete", items: [], error: "item not found" },
 							};
 						}
 						refreshWidget(pi, cwd);
 						const all = listItems(cwd);
 						return {
-							content: [{ type: "text", text: `Removed: ${params.id}` }],
-							details: { action: "remove", items: all },
+							content: [{ type: "text", text: `Deleted: ${params.id}` }],
+							details: { action: "delete", items: all },
 						};
 					}
 
@@ -338,16 +338,16 @@ Only the main agent can modify the todo list. Subagents cannot call this tool.`,
 	pi.registerTool(tool);
 
 	// Slash command with CLI-style arg parsing: /todo add Build login page
-	// Supports: /todo add <text>, /todo toggle <id>, /todo remove <id|*>,
+	// Supports: /todo add <text>, /todo toggle <id>, /todo delete <id|*>,
 	//           /todo list, /todo clear
 	pi.registerCommand("todo", {
-		description: "CLI-style todo manager — /todo add <text>, /todo toggle <id>, /todo remove <id|*>, /todo list, /todo clear",
+		description: "CLI-style todo manager — /todo add <text>, /todo toggle <id>, /todo delete <id|*>, /todo list, /todo clear",
 		getArgumentCompletions(prefix) {
 			const actions = [
 				{ value: "add", label: "add", description: "/todo add <text> — create a new task" },
 				{ value: "reword", label: "reword", description: "/todo reword <id> <text> — change task text by ID" },
 				{ value: "toggle", label: "toggle", description: "/todo toggle <id> — cycle status (pending → done → pending)" },
-				{ value: "remove", label: "remove", description: "/todo remove <id|*> — delete a specific task or * to clear all" },
+				{ value: "delete", label: "delete", description: "/todo delete <id|*> — delete a specific task or * to clear all" },
 				{ value: "list", label: "list", description: "/todo list [status] — show tasks, optionally filter by status" },
 				{ value: "clear", label: "clear", description: "/todo clear — remove all completed (done) tasks" },
 				{ value: "reorder", label: "reorder", description: "/todo reorder <id> <up|down> — move a task in the list order" },
@@ -414,16 +414,16 @@ Only the main agent can modify the todo list. Subagents cannot call this tool.`,
 					break;
 				}
 
-				case "remove": {
+				case "delete": {
 					if (!rest) {
-						ctx.ui.notify("Usage: /todo remove <id> or /todo remove *", "error");
+						ctx.ui.notify("Usage: /todo delete <id> or /todo delete *", "error");
 						return;
 					}
 					if (rest === "*") {
-						// Remove all tasks at once
+						// Delete all tasks at once
 						const store = readStore(cwd);
 						if (store.items.length === 0) {
-							ctx.ui.notify("No tasks to remove.", "info");
+							ctx.ui.notify("No tasks to delete.", "info");
 							return;
 						}
 						const count = store.items.length;
@@ -433,16 +433,16 @@ Only the main agent can modify the todo list. Subagents cannot call this tool.`,
 							"utf-8",
 						);
 						refreshWidget(pi, cwd);
-						ctx.ui.notify(`Removed all ${count} task${count === 1 ? "" : "s"}.`, "info");
+						ctx.ui.notify(`Deleted all ${count} task${count === 1 ? "" : "s"}.`, "info");
 						return;
 					}
-					const removed = removeItem(cwd, rest);
-					if (!removed) {
+					const deleted = deleteItem(cwd, rest);
+					if (!deleted) {
 						ctx.ui.notify(`Error: Item ${rest} not found.`, "error");
 						return;
 					}
 					refreshWidget(pi, cwd);
-					ctx.ui.notify(`Removed: ${rest}`, "info");
+					ctx.ui.notify(`Deleted: ${rest}`, "info");
 					break;
 				}
 
